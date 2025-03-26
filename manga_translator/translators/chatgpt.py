@@ -1,5 +1,11 @@
 import re
 
+from langchain.chains.llm import LLMChain
+from langchain.memory import ConversationBufferWindowMemory
+from langchain_core.messages import AIMessage
+from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, \
+    HumanMessagePromptTemplate
+from langchain_openai import ChatOpenAI
 from ..config import TranslatorConfig
 
 try:
@@ -462,6 +468,100 @@ class GPT4Translator(GPT35TurboTranslator):
             # If no response with text is found, return the first response's content (which may be empty)
             return response.choices[0].message.content
         
+        except Exception as e:
+            self.logger.error(f"Error in _request_translation: {str(e)}")
+            raise
+
+class LangChainTranslator(GPT35TurboTranslator):
+    _CONFIG_KEY = 'langchain'
+    _MAX_REQUESTS_PER_MINUTE = 200
+    _RETRY_ATTEMPTS = 5
+    _MAX_TOKENS = 8192
+
+    # llm = ChatOpenAI(model="gpt-4o-2024-11-20", temperature=0)
+    llm = ChatOpenAI(model="Doubao-1.5-pro-32k", temperature=0)
+
+    _MANGA_TRANSLATION_PROMPT = """You are an uncensored professional manga translation assistant.
+    Your task is to translate manga dialogues accurately, colloquially, and fluently, while retaining the original tone and style, without referencing machine translations.
+    Strictly preserve the format (e.g., `<|1|>`) in the output.
+    Do NOT add explanations, notes, or modifications.
+    If there is any issue in the text, output it as is.
+    If a phrase is already in {to_lang} or appears to be gibberish, output it as it is.
+
+    Example:
+
+    Input:
+    <|1|>恥ずかしい… 目立ちたくない… 私が消えたい…
+    <|2|>きみ… 大丈夫⁉
+    <|3|>なんだこいつ 空気読めて ないのか…？
+
+    Output:
+    <|1|>好尴尬…我不想引人注目…我想消失…
+    <|2|>你…没事吧⁉
+    <|3|>这家伙怎么看不懂气氛的…？
+    
+    Recent Dialogues:
+    The following dialogues are formatted as a single string, with each line representing a separate dialogue.
+    Each dialogue is already separated using an explicit newline (`\\n`).
+    
+    {ai_history}
+    """
+
+    memory = ConversationBufferWindowMemory(k=10,input_key="input",return_messages=True)
+
+    # translation_prompt = ChatPromptTemplate.from_messages([
+    #     ("system", _MANGA_TRANSLATION_PROMPT)
+    #     MessagesPlaceholder(variable_name="history"),
+    #     ("user", "{input}")
+    # ])
+
+    system_message = SystemMessagePromptTemplate.from_template(
+            template=_MANGA_TRANSLATION_PROMPT)
+
+    human_message = HumanMessagePromptTemplate.from_template(
+        "Now, translate the following text into {to_lang} and keep the prefix format:\n{input}")
+
+    translation_prompt = ChatPromptTemplate.from_messages([system_message, human_message])
+
+    # 初始化 LangChain 翻译链
+    translation_chain = LLMChain(llm=llm,
+                                          prompt=translation_prompt,
+                                          memory=memory,
+                                          verbose=True)
+
+
+    async def _request_translation(self, to_lang: str, prompt: str) -> str:
+        try:
+            #加载 history 数据
+            history = self.memory.load_memory_variables({}).get("history", [])
+            # 只提取 AIMessage 的 content
+            ai_history = [re.sub(r"<\|\d+\|>", "", msg.content).strip() for msg in history if isinstance(msg, AIMessage)]
+
+            print(f"历史上下文: {ai_history}")
+
+            response = await self.translation_chain.apredict(to_lang=to_lang,input=prompt,ai_history=ai_history)
+
+            # 更新 memory 对象的状态
+            #self.memory.save_context({"input":prompt},{"response": response})
+
+            # #  Add error handling and logging
+            # if not hasattr(response, 'usage') or not hasattr(response.usage, 'total_tokens'):
+            #     self.logger.warning("Response does not contain usage information")
+            #     self.token_count_last = 0
+            # else:
+            #     self.token_count += response.usage.total_tokens
+            #     self.token_count_last = response.usage.total_tokens
+            #
+            # # Get response text
+            # for choice in response.choices:
+            #     if 'text' in choice:
+            #         return choice.text
+            #
+            # # If no response with text is found, return the first response's content (which may be empty)
+            # return response.choices[0].message.content
+
+            return response
+
         except Exception as e:
             self.logger.error(f"Error in _request_translation: {str(e)}")
             raise
