@@ -21,17 +21,17 @@
     "upscale_ratio": null
   },
   "translator": {
-    "translator": "openai",
-    "target_lang": "ENG",
+    "translator": "offline",
+    "target_lang": "CHS",
     "no_text_lang_skip": false,
     "skip_lang": null,
     "gpt_config": null,
-    "translator_chain": null,
+    "translator_chain": "sugoi:ENG;papago:CHS",
     "selective_translation": null
   },
   "detector": {
-    "detector": "default",
-    "detection_size": 2048,
+    "detector": "ctd",
+    "detection_size": 1536,
     "text_threshold": 0.5,
     "det_rotate": false,
     "det_auto_rotate": false,
@@ -46,9 +46,9 @@
     "colorizer": "none"
   },
   "inpainter": {
-    "inpainter": "lama_large" ,
+    "inpainter": "none",
     "inpainting_size": 2048,
-    "inpainting_precision": "bf16"
+    "inpainting_precision": "fp32"
   },
   "ocr": {
     "use_mocr_merge": false,
@@ -57,5 +57,5 @@
     "ignore_bubble": 0
   },
   "kernel_size": 3,
-  "mask_dilation_offset": 30
+  "mask_dilation_offset": 0
 }
